@@ -25,7 +25,7 @@ SECRET_KEY = '^j!i(vnq_prb^^h1^#uxfq)$8qn7-7jbl$m%k1g8x@vsz4_-#p'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['duy-be.computing.dcu.ie', "http://mysceal-eval.computing.dcu.ie/"]
+ALLOWED_HOSTS = ['duy-be.computing.dcu.ie', "http://mysceal-eval.computing.dcu.ie/", "localhost"]
 CORS_ORIGIN_ALLOW_ALL = True
 
 # Application definition
