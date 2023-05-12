@@ -4,14 +4,15 @@ from pymongo import MongoClient
 import random
 from django.views.decorators.csrf import csrf_exempt
 import time as timecounter
+import copy
 
 client = MongoClient()
 db = client.lsc.session
 db.drop()
 db = client.lsc.session
 db2 = client.lsc.query
-db2.drop()
-db2 = client.lsc.query
+# db2.drop()
+# db2 = client.lsc.query
 SECONDS_PER_CLUE = 30
 SECONDS_LAST_CLUE = 150
 MAX_POINT = 100
@@ -29,9 +30,10 @@ class Query():
             self.time = [SECONDS_PER_CLUE for i in range(len(text) - 1)] + [SECONDS_LAST_CLUE] 
             self.results = results # ["image1", "image2", "image3"]
             self.current = 0
-            self.write_to_db()
-        self.starttime = None
-        self.finished = False    
+            self.starttime = None
+            self.finished = False  
+            self.write_to_db()  
+            
     def at_final_clue(self):
         return self.current == len(self.text) - 1
     
@@ -48,10 +50,11 @@ class Query():
                 "current": self.current}
     
     def get_current_text(self):
-        return self.text[self.current], self.time[self.current]
+        return f"Query {self.idx}:\n" + self.text[self.current], self.time[self.current]
 
     def restart(self):
         self.current = 0
+        self.finished = False  
         self.write_to_db()
     
     def next_clue(self):
@@ -107,37 +110,58 @@ ALL_QUERIES = get_all_queries('backend/queries/lsc22.txt')
 print("All queries:", ALL_QUERIES.keys())
 # TEST_QUERIES = [73, 66, 62]
 # EXP_QUERIES = [72, 64, 57, 63, 74]
-TEST_QUERIES = [108, 109, 110]
-EXP_QUERIES = [key for key in ALL_QUERIES.keys() if key not in TEST_QUERIES]
+TEST_QUERIES = [108, 109, 110, 119, 120, 121]
+EXP_QUERIES = [key for key in ALL_QUERIES.keys() if key not in TEST_QUERIES][:8]
+
+LATIN_SQUARE = ["A	A	A	A	B	B	B	B",
+                "A	A	A	B	B	B	B	A",
+                "A	A	B	B	B	B	A	A",
+                "A	B	B	B	B	A	A	A",
+                "B	B	B	B	A	A	A	A",
+                "B	B	B	A	A	A	A	B",
+                "B	B	A	A	A	A	B	B", 
+                "B	A	A	A	A	B	B	B"]
 
 class LSCSession():
     def __init__(self, name):
         self.name = name
         existed = db.find_one({"name": name})
+        self.all_queries = ALL_QUERIES
         if existed:
             self.restore_from_dict(existed)
         else:
             self.time = 0
-            self.submissions = [[] for i in range(5)]
             self.id = None
             if "test" in name.lower():
-                self.query_ids = TEST_QUERIES
-            else:
+                self.query_ids = TEST_QUERIES[:3]
+            elif "test2" in name.lower():
+                self.query_ids = random.choices(TEST_QUERIES, k=3)
+            elif "user" in name.lower():
                 self.query_ids = EXP_QUERIES
+            else:
+                self.query_ids = random.choices(EXP_QUERIES, k=8)
+            for query in self.query_ids:
+                ALL_QUERIES[query].restart()
             self.query_id = 0
-            self.scores = [0 for i in range(5)]
+            self.submissions = [[] for i in range(len(self.query_ids))]
+            self.scores = [0 for i in range(len(self.query_ids))]
             self.write_to_db()
 
     def reset(self):
         self.time = 0
-        self.submissions = [[] for i in range(5)]
-        self.id = None
         if "test" in self.name.lower():
             self.query_ids = TEST_QUERIES
-        else:
+        elif "test2" in self.name.lower():
+            self.query_ids = random.choices(TEST_QUERIES, k=3)
+        elif "user" in self.name.lower():
             self.query_ids = EXP_QUERIES
+        else:
+            self.query_ids = random.choices(EXP_QUERIES, k=8)
+        for query in self.query_ids:
+            ALL_QUERIES[query].restart()
         self.query_id = 0
-        self.scores = [0 for i in range(5)]
+        self.submissions = [[] for i in range(len(self.query_ids))]
+        self.scores = [0 for i in range(len(self.query_ids))]
         self.write_to_db()
 
     def add_submission(self, imageid):
@@ -149,7 +173,7 @@ class LSCSession():
             past_time = sum(current_query.time[:current_id])
         else:
             past_time = 0
-        print("Client-side:", submission_time + past_time, "Server-side:", timecounter.time() - current_query.starttime)
+        # print("Client-side:", submission_time + past_time, "Server-side:", timecounter.time() - current_query.starttime)
         self.submissions[self.query_id].append((imageid, correctness, submission_time + past_time))
         self.get_score()
         if correctness:
@@ -175,10 +199,14 @@ class LSCSession():
         try:
             return ALL_QUERIES[self.query_ids[self.query_id]]
         except IndexError as e:
+            print(e)
             return None
     
     def get_current_score(self):
-        return round(self.scores[self.query_id], 2)
+        if self.query_id < len(self.scores):
+            return round(self.scores[self.query_id], 2)
+        print(self.query_id, self.scores)
+        return 0
 
     def get_total_score(self):
         return round(sum(self.scores), 2)
@@ -302,3 +330,11 @@ def get_score(request):
         session.get_current_query().starttime = timecounter.time()
     session.set_time(current_time)
     return jsonize({"score": session.get_current_score(), "total_score": session.get_total_score()})
+
+
+@csrf_exempt
+def reset(request):
+    session_name = request.GET.get('session_name')
+    session = LSCSession(session_name)
+    session.reset()
+    return jsonize({"description": "Success", "total_score": session.get_total_score()})

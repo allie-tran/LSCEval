@@ -7,5 +7,6 @@ urlpatterns = [
     path('submit', views.submit, name='submit'),
     path('next_clue', views.next_clue, name='next_clue'),
     path('get_score', views.get_score, name='get_score'),
-    path('end_query_round', views.end_query_round, name='end_query_round')
+    path('end_query_round', views.end_query_round, name='end_query_round'),
+    path('reset', views.reset, name='reset'),
 ]
